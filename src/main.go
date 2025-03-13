@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -13,7 +12,7 @@ import (
 
 func createServer() http.HandlerFunc {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := websocket.Accept(w, r, nil)
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"localhost:1234"}})
 
 		if err != nil {
 			fmt.Printf("An error occured: %v\n", err)
@@ -21,52 +20,34 @@ func createServer() http.HandlerFunc {
 
 		defer c.CloseNow()
 
-		ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+		ctx, cancel := context.WithCancel(r.Context())
+
 		defer cancel()
 
 		var v interface{}
-		err = wsjson.Read(ctx, c, &v)
 
-		if err != nil {
-			fmt.Printf("Error when reading message: %v\n", err)
+		for {
+			err = wsjson.Read(ctx, c, &v)
+
+			if err != nil {
+				fmt.Printf("Error when reading message: %v\n", err)
+				break
+			}
+
+			log.Printf("Received: %v\n", v)
+
+			err = wsjson.Write(ctx, c, "Received! hello from server")
+
+			if err != nil {
+				fmt.Printf("Error while writing back to WebSocket: %v\n", err)
+				break
+			}
 		}
-
-		log.Printf("Received: %v\n", v)
 
 		c.Close(websocket.StatusNormalClosure, "")
 	})
 
 	return handler
-}
-
-func createClient() {
-	time.Sleep(1 * time.Second)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
-	conn, r, err := websocket.Dial(ctx, "ws://localhost:8080", nil)
-
-	if conn == nil {
-		fmt.Printf("Couldn't connect, r: %+v\n", r)
-	}
-
-	if err != nil {
-		fmt.Printf("An error occured: %v\n", err)
-	}
-
-	defer conn.CloseNow()
-
-	fmt.Println("Connected to Websocket")
-
-	err = wsjson.Write(ctx, conn, "hello")
-
-	if err != nil {
-		fmt.Printf("Error when writing to websocket: %v\n", err)
-	}
-
-	conn.Close(websocket.StatusNormalClosure, "")
-
 }
 
 func main() {
@@ -81,7 +62,5 @@ func main() {
 		}
 	}()
 
-	createClient()
-
-	select {}
+	select {} // keep the program running
 }

@@ -1,0 +1,19 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <script src="main.js"></script>
+</head>
+
+<body class="bg-slate-800 text-gray-300 min-h-screen">
+    <div id="chat" class="border-2 border-gray-400 rounded p-3 flex flex-col h-96">
+        <span class="text-gray-400">Messages will appear here.</span>
+    </div>
+    <form id="form" class="w-full border-2 border-gray-400 rounded fixed bottom-0">
+        <input id="userMessage" type="text" placeholder="Type here" class="w-full p-2" autofocus />
+        <input type="submit" class="hidden" />
+    </form>
+</body>
+
+</html>
