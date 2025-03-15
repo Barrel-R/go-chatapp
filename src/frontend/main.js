@@ -1,4 +1,5 @@
 var conn = null
+var chat = null
 
 function createConn() {
     const socket = new WebSocket("ws://localhost:8080")
@@ -12,7 +13,7 @@ function createConn() {
     })
 
     socket.addEventListener("message", (event) => {
-        console.log(event)
+        addMessage(event.data)
     })
 
     socket.addEventListener("close", (event) => {
@@ -22,13 +23,30 @@ function createConn() {
     return socket
 }
 
+function addMessage(message, isUser = false) {
+    const el = document.createElement('div')
+    el.classList = "rounded w-fit bg-slate-600 p-2"
+
+    if (isUser) {
+        el.classList += " ms-auto"
+    }
+
+    el.innerText = message
+    chat.append(el)
+
+    if (chat.scrollHeight > 308) {
+        chat.scrollTop = chat.scrollHeight
+    }
+}
+
 function sendMessage(message) {
     conn.send(JSON.stringify(message.toString()))
-    console.log('sent: ' + message)
+    addMessage(message, true)
 }
 
 document.addEventListener("DOMContentLoaded", (event) => {
     conn = createConn()
+    chat = document.getElementById("chat")
 })
 
 document.addEventListener("submit", (event) => {
