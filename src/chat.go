@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/coder/websocket"
+	"time"
 )
 
 type User struct {
@@ -11,10 +11,10 @@ type User struct {
 }
 
 type chatServer struct {
+	users []User
 }
 
-type chatClient struct {
-	con      websocket.Conn
-	messages []Message
-	users    []User
+type response struct {
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp"`
 }

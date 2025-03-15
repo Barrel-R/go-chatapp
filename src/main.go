@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -34,9 +35,17 @@ func createServer() http.HandlerFunc {
 				break
 			}
 
-			log.Printf("Received: %v\n", v)
+			var responseMessage string
 
-			err = wsjson.Write(ctx, c, "Received! hello from server")
+			if v == "Connected to Websocket." {
+				responseMessage = "Successfully connected, hello!"
+			} else {
+				responseMessage = "Received! hello form server."
+			}
+
+			err = wsjson.Write(ctx, c, response{responseMessage, time.Now()})
+
+			log.Printf("Received: %v\n", v)
 
 			if err != nil {
 				fmt.Printf("Error while writing back to WebSocket: %v\n", err)
