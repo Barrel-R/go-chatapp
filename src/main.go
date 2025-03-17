@@ -9,7 +9,7 @@ import (
 func main() {
 	fmt.Println("Starting program")
 	// createRedisClient()
-	http.Handle("/", createServer())
+	createServer()
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
 

@@ -1,0 +1,4 @@
+#chat {
+    height: calc(100vh - 50px - 1rem);
+    overflow-y: auto;
+}

@@ -1,5 +1,4 @@
 const BASE_RECONNECT_TIMEOUT = 125
-const CHAT_MAX_HEIGHT = 308
 var conn = null
 var chat = null
 var reconnectTimeout = BASE_RECONNECT_TIMEOUT
@@ -92,9 +91,7 @@ function addMessage(messageObj, isUser = false) {
 
     chat.append(msgNode)
 
-    if (chat.scrollHeight > CHAT_MAX_HEIGHT) {
-        chat.scrollTop = chat.scrollHeight
-    }
+    chat.scrollTop = chat.scrollHeight
 }
 
 function sendMessage(message) {

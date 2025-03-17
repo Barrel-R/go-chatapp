@@ -11,14 +11,22 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-type User struct {
+type user struct {
 	ip        string
 	userAgent string
 	id        uint64
 }
 
+type subscriber struct {
+	messages  chan []byte
+	closeSlow func()
+}
+
 type chatServer struct {
-	users []User
+	users                  []user
+	subscribeMessageBuffer int
+	serveMux               http.ServeMux
+	subscribers            map[*subscriber]struct{}
 }
 
 type response struct {
@@ -26,8 +34,8 @@ type response struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-func createServer() http.HandlerFunc {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (*chatServer) subscribeHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"localhost:1234"}})
 
 		if err != nil {
@@ -70,6 +78,17 @@ func createServer() http.HandlerFunc {
 
 		c.Close(websocket.StatusNormalClosure, "")
 	})
+}
 
-	return handler
+func createServer() *chatServer {
+	cs := chatServer{
+		users:                  []user{},
+		subscribeMessageBuffer: 16,
+		serveMux:               *http.NewServeMux(),
+		subscribers:            make(map[*subscriber]struct{}),
+	}
+
+	cs.serveMux.Handle("/", cs.subscribeHandler())
+
+	return &cs
 }
