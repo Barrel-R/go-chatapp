@@ -18,6 +18,4 @@ func main() {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()
-
-	select {} // keep the program running
 }

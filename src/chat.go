@@ -35,7 +35,7 @@ type response struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-func (cs *chatServer) subscribeHandler() http.Handler {
+func getAddress() string {
 	var port string
 
 	if len(os.Args) <= 1 {
@@ -44,6 +44,30 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 		port = os.Args[1]
 	}
 
+	return "ws://localhost:" + port
+}
+
+func (cs *chatServer) publishHandler() http.Handler {
+	address := getAddress()
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{address}})
+
+		if err != nil {
+			fmt.Printf("An error occurred: %v\n", err)
+		}
+
+		for sub := range cs.subscribers {
+			select {
+			case <-sub.messages:
+			default:
+				fmt.Printf("No subscribers to publish to.")
+			}
+		}
+	})
+}
+
+func (cs *chatServer) subscribeHandler() http.Handler {
 	sub := subscriber{
 		messages:  make(chan []byte, cs.subscribeMessageBuffer),
 		closeSlow: nil,
@@ -51,10 +75,7 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 	}
 
 	cs.subscribers[&sub] = struct{}{}
-
-	address := "ws://localhost:" + port
-
-	fmt.Printf("address: %v", address)
+	address := getAddress()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{address}})
@@ -62,8 +83,6 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 		if err != nil {
 			fmt.Printf("An error occured: %v\n", err)
 		}
-
-		defer c.CloseNow()
 
 		ctx, cancel := context.WithCancel(r.Context())
 
@@ -97,6 +116,7 @@ func createServer() *chatServer {
 	}
 
 	cs.serveMux.Handle("/", cs.subscribeHandler())
+	cs.serveMux.Handle("/publish", cs.publishHandler())
 
 	return &cs
 }
