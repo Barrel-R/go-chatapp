@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
+
+const FALLBACK_PORT string = "8080"
 
 type user struct {
 	ip        string
@@ -34,9 +35,29 @@ type response struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-func (*chatServer) subscribeHandler() http.Handler {
+func (cs *chatServer) subscribeHandler() http.Handler {
+	var port string
+
+	if len(os.Args) <= 1 {
+		port = FALLBACK_PORT
+	} else {
+		port = os.Args[1]
+	}
+
+	sub := subscriber{
+		messages:  make(chan []byte, cs.subscribeMessageBuffer),
+		closeSlow: nil,
+		// TODO: handle slow connection
+	}
+
+	cs.subscribers[&sub] = struct{}{}
+
+	address := "ws://localhost:" + port
+
+	fmt.Printf("address: %v", address)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"localhost:1234"}})
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{address}})
 
 		if err != nil {
 			fmt.Printf("An error occured: %v\n", err)
@@ -48,35 +69,22 @@ func (*chatServer) subscribeHandler() http.Handler {
 
 		defer cancel()
 
-		var v interface{}
+		ctx = c.CloseRead(ctx)
 
 		for {
-			err = wsjson.Read(ctx, c, &v)
-
-			if err != nil {
-				fmt.Printf("Error when reading message: %v\n", err)
-				break
-			}
-
-			var responseMessage string
-
-			if v == "Connected to Websocket." {
-				responseMessage = "Successfully connected, hello!"
-			} else {
-				responseMessage = "Received! hello form server."
-			}
-
-			err = wsjson.Write(ctx, c, response{responseMessage, time.Now()})
-
-			log.Printf("Received: %v\n", v)
-
-			if err != nil {
-				fmt.Printf("Error while writing back to WebSocket: %v\n", err)
-				break
+			select {
+			case msg := <-sub.messages:
+				fmt.Printf("received message: %v", msg)
+				answerMessage(string(msg))
+			case <-ctx.Done():
+				c.Close(websocket.StatusNormalClosure, "")
+			default:
+				if ctx.Err() != nil {
+					fmt.Print(ctx.Err().Error())
+					c.Close(websocket.StatusAbnormalClosure, "")
+				}
 			}
 		}
-
-		c.Close(websocket.StatusNormalClosure, "")
 	})
 }
 
@@ -91,4 +99,12 @@ func createServer() *chatServer {
 	cs.serveMux.Handle("/", cs.subscribeHandler())
 
 	return &cs
+}
+
+func answerMessage(message string) string {
+	if message == "Connected to Websocket." {
+		return "Successfully connected, hello!"
+	}
+
+	return "Received! hello form server."
 }
