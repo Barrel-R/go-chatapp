@@ -6,11 +6,22 @@ var reconnectTimeout = BASE_RECONNECT_TIMEOUT
 function createConn() {
     const socket = new WebSocket("ws://localhost:8080")
 
+    // subscribe()
     setupListeners(socket)
 
     conn = socket
 
     return socket
+}
+
+function subscribe() {
+    fetch("http://localhost:8080/subscribe")
+        .then(response => {
+            console.log(response)
+        })
+        .catch(err => {
+            console.log(err)
+        })
 }
 
 function setupListeners(socket) {
@@ -95,8 +106,16 @@ function addMessage(messageObj, isUser = false) {
 }
 
 function sendMessage(message) {
-    conn.send(JSON.stringify(message.toString()))
-    addMessage({ message, timestamp: new Date() }, true)
+    const xhr = new XMLHttpRequest()
+    xhr.open("POST", "http://localhost:1234/publish")
+    xhr.setRequestHeader("Content-Type", "application/json")
+
+    try {
+        xhr.send(JSON.stringify(message.toString()))
+        addMessage({ message, timestamp: new Date() }, true)
+    } catch (err) {
+        console.error(err)
+    }
 }
 
 document.addEventListener("DOMContentLoaded", (event) => {

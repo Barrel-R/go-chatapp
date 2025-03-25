@@ -13,6 +13,8 @@ import (
 
 const FALLBACK_PORT string = "8080"
 
+var ORIGIN_PATTERNS = []string{"http://localhost:1234"}
+
 type user struct {
 	ip        string
 	userAgent string
@@ -29,7 +31,7 @@ type chatServer struct {
 	subscribeMessageBuffer int
 	serveMux               http.ServeMux
 	subscribers            map[*subscriber]struct{}
-	subscriberMutx         sync.Mutex
+	subscriberMutex        sync.Mutex
 }
 
 type response struct {
@@ -49,11 +51,26 @@ func getAddress() string {
 	return "ws://localhost:" + port
 }
 
-func (cs *chatServer) publishHandler() http.Handler {
-	address := getAddress()
-
+func startConnection() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{address}})
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
+
+		if err != nil {
+			fmt.Printf("Error while setting up connection: %v\n", err)
+		}
+
+		msg := "Connected to WebSocket"
+		ctx, cancel := context.WithCancel(r.Context())
+
+		defer cancel()
+
+		conn.Write(ctx, websocket.MessageText, []byte(msg))
+	})
+}
+
+func (cs *chatServer) publishHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
 
 		if err != nil {
 			fmt.Printf("An error occurred: %v\n", err)
@@ -69,6 +86,18 @@ func (cs *chatServer) publishHandler() http.Handler {
 	})
 }
 
+func (cs *chatServer) addSubscriber(s *subscriber) {
+	cs.subscriberMutex.Lock()
+	cs.subscribers[s] = struct{}{}
+	cs.subscriberMutex.Unlock()
+}
+
+func (cs *chatServer) deleteSubscriber(s *subscriber) {
+	cs.subscriberMutex.Lock()
+	delete(cs.subscribers, s)
+	cs.subscriberMutex.Unlock()
+}
+
 func (cs *chatServer) subscribeHandler() http.Handler {
 	sub := subscriber{
 		messages:  make(chan []byte, cs.subscribeMessageBuffer),
@@ -76,11 +105,11 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 		// TODO: handle slow connection
 	}
 
-	cs.subscribers[&sub] = struct{}{}
-	address := getAddress()
+	cs.addSubscriber(&sub)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{address}})
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:1234")
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
 
 		if err != nil {
 			fmt.Printf("An error occured: %v\n", err)
@@ -96,7 +125,7 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 			select {
 			case msg := <-sub.messages:
 				fmt.Printf("received message: %v", msg)
-				answerMessage(string(msg))
+				answerMessage(c, ctx)
 			case <-ctx.Done():
 				c.Close(websocket.StatusNormalClosure, "")
 			default:
@@ -109,6 +138,10 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 	})
 }
 
+func (cs *chatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	cs.serveMux.ServeHTTP(w, r)
+}
+
 func createServer() *chatServer {
 	cs := chatServer{
 		users:                  []user{},
@@ -117,16 +150,19 @@ func createServer() *chatServer {
 		subscribers:            make(map[*subscriber]struct{}),
 	}
 
-	cs.serveMux.Handle("/", cs.subscribeHandler())
+	cs.serveMux.Handle("/", startConnection())
+	cs.serveMux.Handle("/subscribe", cs.subscribeHandler())
 	cs.serveMux.Handle("/publish", cs.publishHandler())
 
 	return &cs
 }
 
-func answerMessage(message string) string {
-	if message == "Connected to Websocket." {
-		return "Successfully connected, hello!"
-	}
+func answerMessage(conn *websocket.Conn, ctx context.Context) {
+	ans := "Received! hello from server."
 
-	return "Received! hello form server."
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+
+	defer cancel()
+
+	conn.Write(ctx, websocket.MessageText, []byte(ans))
 }
