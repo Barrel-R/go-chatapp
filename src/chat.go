@@ -13,7 +13,7 @@ import (
 
 const FALLBACK_PORT string = "8080"
 
-var ORIGIN_PATTERNS = []string{"localhost:1234"}
+var ORIGIN_PATTERNS = []string{"localhost:1234", "127.0.0.1:1234"}
 
 type user struct {
 	ip        string
@@ -53,6 +53,7 @@ func getAddress() string {
 
 func startConnection() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:1234")
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
 
 		if err != nil {
@@ -70,6 +71,10 @@ func startConnection() http.Handler {
 
 func (cs *chatServer) publishHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:1234")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		// w.WriteHeader(http.StatusOK)
 		_, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
 
 		if err != nil {

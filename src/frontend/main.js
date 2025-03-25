@@ -6,7 +6,7 @@ var reconnectTimeout = BASE_RECONNECT_TIMEOUT
 function createConn() {
     const socket = new WebSocket("ws://localhost:8080")
 
-    // subscribe()
+    subscribe()
     setupListeners(socket)
 
     conn = socket
