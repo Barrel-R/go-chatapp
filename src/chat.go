@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -28,6 +29,7 @@ type chatServer struct {
 	subscribeMessageBuffer int
 	serveMux               http.ServeMux
 	subscribers            map[*subscriber]struct{}
+	subscriberMutx         sync.Mutex
 }
 
 type response struct {
@@ -51,7 +53,7 @@ func (cs *chatServer) publishHandler() http.Handler {
 	address := getAddress()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{address}})
+		_, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{address}})
 
 		if err != nil {
 			fmt.Printf("An error occurred: %v\n", err)
