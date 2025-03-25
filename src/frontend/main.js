@@ -25,7 +25,6 @@ function subscribe() {
 }
 
 function setupListeners(socket) {
-
     socket.addEventListener("open", (event) => {
         console.log("Connected to Websocket.", event)
         socket.send(JSON.stringify("Connected to Websocket."))
@@ -34,8 +33,7 @@ function setupListeners(socket) {
 
     socket.addEventListener("message", (event) => {
         try {
-            const parsedData = JSON.parse(event.data)
-            addMessage(parsedData)
+            addMessage({ message: event.data, timestamp: new Date() })
         } catch (err) {
             console.error("Error while parsing server message: ", err)
         }
@@ -107,7 +105,7 @@ function addMessage(messageObj, isUser = false) {
 
 function sendMessage(message) {
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", "http://localhost:1234/publish")
+    xhr.open("POST", "http://localhost:8080/publish")
     xhr.setRequestHeader("Content-Type", "application/json")
 
     try {

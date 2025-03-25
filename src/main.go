@@ -23,7 +23,7 @@ func run() error {
 	fmt.Println("Starting program")
 	// createRedisClient()
 
-	l, err := net.Listen("tcp", "localhost:8080")
+	l, err := net.Listen("tcp", ":8080")
 
 	if err != nil {
 		fmt.Printf("Error setting up TCP: %v\n", err)

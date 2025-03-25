@@ -13,7 +13,7 @@ import (
 
 const FALLBACK_PORT string = "8080"
 
-var ORIGIN_PATTERNS = []string{"http://localhost:1234"}
+var ORIGIN_PATTERNS = []string{"localhost:1234"}
 
 type user struct {
 	ip        string
@@ -99,14 +99,6 @@ func (cs *chatServer) deleteSubscriber(s *subscriber) {
 }
 
 func (cs *chatServer) subscribeHandler() http.Handler {
-	sub := subscriber{
-		messages:  make(chan []byte, cs.subscribeMessageBuffer),
-		closeSlow: nil,
-		// TODO: handle slow connection
-	}
-
-	cs.addSubscriber(&sub)
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:1234")
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
@@ -114,6 +106,17 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 		if err != nil {
 			fmt.Printf("An error occured: %v\n", err)
 		}
+
+		defer c.Close(websocket.StatusNormalClosure, "Connection closed")
+
+		sub := subscriber{
+			messages:  make(chan []byte, cs.subscribeMessageBuffer),
+			closeSlow: nil,
+			// TODO: handle slow connection
+		}
+
+		cs.addSubscriber(&sub)
+		defer cs.deleteSubscriber(&sub)
 
 		ctx, cancel := context.WithCancel(r.Context())
 
@@ -127,12 +130,7 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 				fmt.Printf("received message: %v", msg)
 				answerMessage(c, ctx)
 			case <-ctx.Done():
-				c.Close(websocket.StatusNormalClosure, "")
-			default:
-				if ctx.Err() != nil {
-					fmt.Print(ctx.Err().Error())
-					c.Close(websocket.StatusAbnormalClosure, "")
-				}
+				return
 			}
 		}
 	})
