@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync"
@@ -13,7 +14,7 @@ import (
 
 const FALLBACK_PORT string = "8080"
 
-var ORIGIN_PATTERNS = []string{"localhost:1234", "127.0.0.1:1234"}
+var ORIGIN_PATTERNS = []string{"localhost:1234"}
 
 type user struct {
 	ip        string
@@ -51,43 +52,41 @@ func getAddress() string {
 	return "ws://localhost:" + port
 }
 
-func startConnection() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:1234")
-		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
-
-		if err != nil {
-			fmt.Printf("Error while setting up connection: %v\n", err)
-		}
-
-		msg := "Connected to WebSocket"
-		ctx, cancel := context.WithCancel(r.Context())
-
-		defer cancel()
-
-		conn.Write(ctx, websocket.MessageText, []byte(msg))
-	})
-}
-
 func (cs *chatServer) publishHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Handle preflight (OPTIONS) requests
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:1234")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.WriteHeader(http.StatusNoContent) // 204 No Content for preflight requests
+			return
+		}
+
+		// Set CORS headers for actual requests
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:1234")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		// w.WriteHeader(http.StatusOK)
-		_, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
+
+		body := http.MaxBytesReader(w, r.Body, 8192)
+		msg, err := io.ReadAll(body)
 
 		if err != nil {
-			fmt.Printf("An error occurred: %v\n", err)
+			fmt.Printf("Error while reading body: %v\n", err)
+			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
 		}
+
+		cs.subscriberMutex.Lock()
+		defer cs.subscriberMutex.Unlock()
 
 		for sub := range cs.subscribers {
 			select {
-			case <-sub.messages:
+			case sub.messages <- msg:
+				fmt.Printf("Adding new message to subscriber: %v\n", string(msg))
 			default:
-				fmt.Printf("No subscribers to publish to.")
+				fmt.Println("Couldn't publish the message.")
 			}
 		}
+
+		w.WriteHeader(http.StatusAccepted)
 	})
 }
 
@@ -106,7 +105,9 @@ func (cs *chatServer) deleteSubscriber(s *subscriber) {
 func (cs *chatServer) subscribeHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:1234")
-		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: ORIGIN_PATTERNS})
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			OriginPatterns: ORIGIN_PATTERNS, InsecureSkipVerify: true,
+		})
 
 		if err != nil {
 			fmt.Printf("An error occured: %v\n", err)
@@ -124,7 +125,6 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 		defer cs.deleteSubscriber(&sub)
 
 		ctx, cancel := context.WithCancel(r.Context())
-
 		defer cancel()
 
 		ctx = c.CloseRead(ctx)
@@ -132,13 +132,25 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 		for {
 			select {
 			case msg := <-sub.messages:
-				fmt.Printf("received message: %v", msg)
+				fmt.Printf("received message: %s\n", string(msg))
+
 				answerMessage(c, ctx)
 			case <-ctx.Done():
+				fmt.Println("Sub context is done")
 				return
 			}
 		}
 	})
+}
+
+func answerMessage(conn *websocket.Conn, ctx context.Context) {
+	ans := "Received! hello from server."
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+
+	defer cancel()
+
+	conn.Write(ctx, websocket.MessageText, []byte(ans))
 }
 
 func (cs *chatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -153,19 +165,8 @@ func createServer() *chatServer {
 		subscribers:            make(map[*subscriber]struct{}),
 	}
 
-	cs.serveMux.Handle("/", startConnection())
 	cs.serveMux.Handle("/subscribe", cs.subscribeHandler())
 	cs.serveMux.Handle("/publish", cs.publishHandler())
 
 	return &cs
-}
-
-func answerMessage(conn *websocket.Conn, ctx context.Context) {
-	ans := "Received! hello from server."
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-
-	defer cancel()
-
-	conn.Write(ctx, websocket.MessageText, []byte(ans))
 }

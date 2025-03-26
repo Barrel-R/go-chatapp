@@ -1,12 +1,11 @@
 const BASE_RECONNECT_TIMEOUT = 125
-var conn = null
-var chat = null
 var reconnectTimeout = BASE_RECONNECT_TIMEOUT
+var conn = null
+var chatend = null
 
 function createConn() {
-    const socket = new WebSocket("ws://localhost:8080")
+    const socket = new WebSocket("ws://localhost:8080/subscribe")
 
-    subscribe()
     setupListeners(socket)
 
     conn = socket
@@ -14,20 +13,10 @@ function createConn() {
     return socket
 }
 
-function subscribe() {
-    fetch("http://localhost:8080/subscribe")
-        .then(response => {
-            console.log(response)
-        })
-        .catch(err => {
-            console.log(err)
-        })
-}
-
 function setupListeners(socket) {
     socket.addEventListener("open", (event) => {
         console.log("Connected to Websocket.", event)
-        socket.send(JSON.stringify("Connected to Websocket."))
+        sendMessage("connected", true)
         reconnectTimeout = BASE_RECONNECT_TIMEOUT
     })
 
@@ -103,13 +92,17 @@ function addMessage(messageObj, isUser = false) {
     chat.scrollTop = chat.scrollHeight
 }
 
-function sendMessage(message) {
+function sendMessage(message, initial = false) {
     const xhr = new XMLHttpRequest()
     xhr.open("POST", "http://localhost:8080/publish")
     xhr.setRequestHeader("Content-Type", "application/json")
 
     try {
         xhr.send(JSON.stringify(message.toString()))
+        if (initial) {
+            return
+        }
+
         addMessage({ message, timestamp: new Date() }, true)
     } catch (err) {
         console.error(err)
