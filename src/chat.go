@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/redis/go-redis/v9"
 )
 
 const FALLBACK_PORT string = "8080"
@@ -33,6 +34,7 @@ type chatServer struct {
 	serveMux               http.ServeMux
 	subscribers            map[*subscriber]struct{}
 	subscriberMutex        sync.Mutex
+	rdb                    *redis.Client
 }
 
 type response struct {
@@ -77,13 +79,15 @@ func (cs *chatServer) publishHandler() http.Handler {
 		cs.subscriberMutex.Lock()
 		defer cs.subscriberMutex.Unlock()
 
-		for sub := range cs.subscribers {
-			select {
-			case sub.messages <- msg:
-				fmt.Printf("Adding new message to subscriber: %v\n", string(msg))
-			default:
-				fmt.Println("Couldn't publish the message.")
-			}
+		fmt.Printf("sub count: %v\n", len(cs.subscribers))
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		err = cs.rdb.Publish(ctx, "subscribers", msg).Err()
+
+		if err != nil {
+			fmt.Printf("Error publishing message: %v\n", err)
 		}
 
 		w.WriteHeader(http.StatusAccepted)
@@ -129,16 +133,18 @@ func (cs *chatServer) subscribeHandler() http.Handler {
 
 		ctx = c.CloseRead(ctx)
 
-		for {
-			select {
-			case msg := <-sub.messages:
-				fmt.Printf("received message: %s\n", string(msg))
+		pubsub := cs.rdb.Subscribe(ctx, "subscribers")
 
-				answerMessage(c, ctx)
-			case <-ctx.Done():
-				fmt.Println("Sub context is done")
-				return
+		for {
+			msg, err := pubsub.ReceiveMessage(ctx)
+
+			if err != nil {
+				fmt.Printf("Error when receiving message: %v\n", err)
 			}
+
+			fmt.Printf("Received: %v\n", msg.Payload)
+
+			answerMessage(c, ctx)
 		}
 	})
 }
@@ -163,6 +169,7 @@ func createServer() *chatServer {
 		subscribeMessageBuffer: 16,
 		serveMux:               *http.NewServeMux(),
 		subscribers:            make(map[*subscriber]struct{}),
+		rdb:                    createRedisClient(),
 	}
 
 	cs.serveMux.Handle("/subscribe", cs.subscribeHandler())
